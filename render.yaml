@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: 9look-worker
+    env: python
+    buildCommand: pip install -r requirements.txt && playwright install chromium && playwright install-deps chromium
+    startCommand: python worker.py
+    plan: free
+    envVars:
+      - key: RAILWAY_URL
+        value: https://9look-production.up.railway.app
+      - key: WORKER_SECRET
+        sync: false
+      - key: PORT
+        value: 10000
+      - key: PLAYWRIGHT_HEADLESS
+        value: true
