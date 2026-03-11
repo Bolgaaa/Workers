@@ -21,7 +21,9 @@ RAILWAY_URL   = os.getenv("RAILWAY_URL", "").rstrip("/")
 WORKER_SECRET = os.getenv("WORKER_SECRET", "change_this")
 PORT          = int(os.getenv("PORT", 10000))
 HEADLESS      = os.getenv("PLAYWRIGHT_HEADLESS", "true").lower() == "true"
-os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/project/src/.playwright-browsers"
+os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "/opt/render/project/.playwright-browsers"
+# Tell Playwright where browsers are installed (must match build path)
+os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", "/opt/render/project/.playwright-browsers")
 COOKIE_FILE   = "/tmp/intelscry_cookies.json"
 INTELSCRY_URL = "https://dashboard.intelscry.cc/search"
 
