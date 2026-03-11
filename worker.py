@@ -56,15 +56,8 @@ def set_session():
     with open(COOKIE_FILE, "w") as f:
         json.dump(data["cookies"], f)
     log.info("Session cookies saved (%d cookies)", len(data["cookies"]))
-    # Inject immediately into live browser context if available
-    if browser_context is not None:
-        try:
-            browser_context.clear_cookies()
-            browser_context.add_cookies(data["cookies"])
-            log.info("Cookies injected into live browser context!")
-            reload_cookies = True
-        except Exception as e:
-            log.warning(f"Live inject failed: {e}")
+    # Signal main loop to reload cookies (can't call Playwright from Flask thread)
+    reload_cookies = True
     return jsonify({"ok": True, "count": len(data["cookies"])})
 
 @app.route("/search", methods=["POST"])
@@ -644,6 +637,11 @@ def main():
             if reload_cookies:
                 reload_cookies = False
                 try:
+                    with open(COOKIE_FILE) as f:
+                        new_cookies = json.load(f)
+                    context.clear_cookies()
+                    context.add_cookies(new_cookies)
+                    log.info(f"Cookies injected ({len(new_cookies)}) — reloading IntelScry...")
                     page.goto("https://dashboard.intelscry.cc/search", wait_until="domcontentloaded", timeout=20000)
                     time.sleep(2)
                     if "login" not in page.url and "auth" not in page.url:
