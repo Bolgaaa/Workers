@@ -30,9 +30,11 @@ log = logging.getLogger("9look-worker")
 
 app = Flask(__name__)
 
-worker_ready = False
-current_job  = None
-job_queue    = queue.Queue()
+worker_ready    = False
+current_job     = None
+job_queue       = queue.Queue()
+browser_context = None  # set after browser launches
+reload_cookies  = False # signal to main loop to reload cookies
 
 def check_secret():
     if request.headers.get("X-Worker-Secret", "") != WORKER_SECRET:
@@ -45,6 +47,7 @@ def health():
 
 @app.route("/session", methods=["POST"])
 def set_session():
+    global reload_cookies
     err = check_secret()
     if err: return err
     data = request.json
@@ -53,6 +56,15 @@ def set_session():
     with open(COOKIE_FILE, "w") as f:
         json.dump(data["cookies"], f)
     log.info("Session cookies saved (%d cookies)", len(data["cookies"]))
+    # Inject immediately into live browser context if available
+    if browser_context is not None:
+        try:
+            browser_context.clear_cookies()
+            browser_context.add_cookies(data["cookies"])
+            log.info("Cookies injected into live browser context!")
+            reload_cookies = True
+        except Exception as e:
+            log.warning(f"Live inject failed: {e}")
     return jsonify({"ok": True, "count": len(data["cookies"])})
 
 @app.route("/search", methods=["POST"])
@@ -593,6 +605,7 @@ def main():
             "--disable-blink-features=AutomationControlled",
         ]
     )
+    global browser_context
     context = browser.new_context(
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         ignore_https_errors=True,
@@ -610,6 +623,7 @@ def main():
     else:
         log.warning("No cookies — POST to /session to inject IntelScry cookies.")
 
+    browser_context = context
     page = context.new_page()
 
     try:
@@ -626,6 +640,19 @@ def main():
     # Boucle principale Playwright
     while True:
         try:
+            global reload_cookies
+            if reload_cookies:
+                reload_cookies = False
+                try:
+                    page.goto("https://dashboard.intelscry.cc/search", wait_until="domcontentloaded", timeout=20000)
+                    time.sleep(2)
+                    if "login" not in page.url and "auth" not in page.url:
+                        log.info("IntelScry session reloaded — Worker ready!")
+                        worker_ready = True
+                    else:
+                        log.warning("Still not logged in after cookie reload.")
+                except Exception as e:
+                    log.error(f"Reload failed: {e}")
             job = job_queue.get(timeout=1)
             if job.get("type") == "searcher":
                 process_searcher(page, job["job_id"], job.get("quickSearch",""), job.get("criteria",[]), job.get("wildcard",False))
